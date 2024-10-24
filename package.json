@@ -2,6 +2,9 @@
   "name": "certificate-checker",
   "version": "0.1.0",
   "main": "index.js",
+  "bin": {
+    "certificate-checker": "cli.js"
+  },
   "author": "Mark Barr <mark@hyperingenuity.com>",
   "license": "MIT",
   "devDependencies": {
@@ -12,6 +15,7 @@
   },
   "dependencies": {
     "async": "^3.2.6",
-    "easy-ocsp": "^1.2.0"
+    "easy-ocsp": "^1.2.0",
+    "yargs": "^17.7.2"
   }
 }

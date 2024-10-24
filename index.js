@@ -1,7 +1,5 @@
-#!/usr/bin/env node
 'use strict';
 
-const async = require('async');
 const { X509Certificate } = require('node:crypto');
 const { getCertStatus } = require('easy-ocsp');
 const fs = require('node:fs/promises');
@@ -16,7 +14,7 @@ const httpsDefaults = {
 
 const subjectRegExp = /CN=(.*)$/u;
 
-function checkCertificate (certificate) {
+function checkCertificateDates (certificate) {
   const validTo = new Date(certificate.validTo);
   const daysRemaining = Math.floor((validTo.getTime() - Date.now()) / 86400000);
   return {
@@ -31,7 +29,7 @@ async function getFileCertificate (filename) {
   const certificate = new X509Certificate(data);
   return {
     certificate,
-    ...checkCertificate(certificate),
+    ...checkCertificateDates(certificate),
   };
 }
 
@@ -52,7 +50,7 @@ function getHTTPSCertificate ({ hostname, port = 443 }) {
           certificate,
           cipher,
           hostname,
-          ...checkCertificate(certificate),
+          ...checkCertificateDates(certificate),
         });
       });
 
@@ -115,7 +113,7 @@ async function validateCertificate (location) {
         validation.reasons.push('NO_CERT_SUBJECT');
       }
 
-      if (data.certificate?.infoAccess) {
+      if (validation.valid && data.certificate?.infoAccess) {
         const ocspResult = await getCertStatus(data.certificate);
         validation.ocsp = ocspResult;
 
@@ -127,10 +125,11 @@ async function validateCertificate (location) {
 
       return validation;
     }
+
     return {
       valid: false,
       location,
-      reason: 'Unable to fetch certificate',
+      reason: 'UNABLE_TO_GET_CERT',
     };
   } catch (error) {
     return {
@@ -141,25 +140,9 @@ async function validateCertificate (location) {
   }
 }
 
-async function main () {
-  const locations = [
-    'https://expired.badssl.com/',
-    'https://wrong.host.badssl.com/',
-    'https://self-signed.badssl.com/',
-    'https://untrusted-root.badssl.com/',
-    'https://revoked.badssl.com/',
-    'https://pinning-test.badssl.com/',
-    'https://no-common-name.badssl.com/',
-    'https://no-subject.badssl.com/',
-    'https://incomplete-chain.badssl.com/',
-    'https://tls-v1-0.badssl.com:1010/',
-    'https://tls-v1-1.badssl.com:1011/',
-    'https://tls-v1-2.badssl.com:1012/',
-    'https://rc4.badssl.com/',
-  ];
-
-  const validation = await async.map(locations, validateCertificate);
-  console.log(validation);
-}
-
-main().catch(error => console.log(error));
+module.exports = {
+  getFileCertificate,
+  getHTTPSCertificate,
+  validate: validateCertificate,
+  validateCertificate,
+};
