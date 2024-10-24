@@ -7,11 +7,13 @@ const fs = require('node:fs/promises');
 const https = require('node:https');
 const url = require('node:url');
 
-const defaults = {
+const httpsDefaults = {
   agent: false,
   method: 'HEAD',
   rejectUnauthorized: false,
 };
+
+const subjectRegExp = /CN=(.*)$/u;
 
 function checkCertificate (certificate) {
   const validTo = new Date(certificate.validTo);
@@ -36,7 +38,7 @@ function getHTTPSCertificate ({ hostname, port = 443 }) {
   return new Promise((resolve, reject) => {
     try {
       const req = https.request({
-        ...defaults,
+        ...httpsDefaults,
         hostname,
         port,
       }, (res) => {
@@ -67,31 +69,48 @@ function getHTTPSCertificate ({ hostname, port = 443 }) {
 }
 
 async function validateCertificate (location) {
-  let certificate;
+  let data;
 
   try {
     if (location.startsWith('https://')) {
-      certificate = await getHTTPSCertificate(url.parse(location));
+      data = await getHTTPSCertificate(url.parse(location));
     } else if (location.startsWith('/')) {
-      certificate = await getFileCertificate(location);
+      data = await getFileCertificate(location);
     } else {
-      certificate = await getHTTPSCertificate({ hostname: location });
+      data = await getHTTPSCertificate({ hostname: location });
     }
 
-    if (certificate) {
+    if (data) {
       const validation = {
         valid: true,
         location,
-        daysRemaining: certificate.daysRemaining,
-        validFrom: certificate.validFrom,
-        validTo: certificate.validTo,
+        cname: null,
+        daysRemaining: data.daysRemaining,
+        validFrom: data.validFrom,
+        validTo: data.validTo,
+        certificate: data.certificate,
+        cipher: data.cipher,
+        reasons: [],
       };
 
-      if (typeof certificate.authorized !== 'undefined') {
-        validation.valid = certificate.authorized;
-        if (!certificate.authorized) {
-          validation.reason = certificate.authorizationError;
+      if (typeof data.authorized !== 'undefined') {
+        validation.valid = data.authorized;
+        if (!data.authorized) {
+          validation.reasons.push(data.authorizationError);
         }
+      }
+
+      if (data.certificate.subject) {
+        if (subjectRegExp.test(data.certificate.subject)) {
+          const [ , cname ] = data.certificate.subject.match(subjectRegExp);
+          validation.cname = cname;
+        } else {
+          validation.valid = false;
+          validation.reasons.push('NO_CERT_CNAME');
+        }
+      } else {
+        validation.valid = false;
+        validation.reasons.push('NO_CERT_SUBJECT');
       }
 
       return validation;
@@ -121,6 +140,10 @@ async function main () {
     'https://no-common-name.badssl.com/',
     'https://no-subject.badssl.com/',
     'https://incomplete-chain.badssl.com/',
+    'https://tls-v1-0.badssl.com:1010/',
+    'https://tls-v1-1.badssl.com:1011/',
+    'https://tls-v1-2.badssl.com:1012/',
+    'https://rc4.badssl.com/',
   ];
 
   const validation = await async.map(locations, validateCertificate);
