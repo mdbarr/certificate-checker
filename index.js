@@ -3,6 +3,7 @@
 
 const async = require('async');
 const { X509Certificate } = require('node:crypto');
+const { getCertStatus } = require('easy-ocsp');
 const fs = require('node:fs/promises');
 const https = require('node:https');
 const url = require('node:url');
@@ -90,6 +91,7 @@ async function validateCertificate (location) {
         validTo: data.validTo,
         certificate: data.certificate,
         cipher: data.cipher,
+        ocsp: null,
         reasons: [],
       };
 
@@ -111,6 +113,16 @@ async function validateCertificate (location) {
       } else {
         validation.valid = false;
         validation.reasons.push('NO_CERT_SUBJECT');
+      }
+
+      if (data.certificate?.infoAccess) {
+        const ocspResult = await getCertStatus(data.certificate);
+        validation.ocsp = ocspResult;
+
+        if (ocspResult.state === 'revoked') {
+          validation.valid = false;
+          validation.reasons.push('CERT_REVOKED');
+        }
       }
 
       return validation;

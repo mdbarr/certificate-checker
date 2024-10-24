@@ -11,6 +11,7 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "async": "^3.2.6"
+    "async": "^3.2.6",
+    "easy-ocsp": "^1.2.0"
   }
 }
