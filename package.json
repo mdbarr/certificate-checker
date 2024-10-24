@@ -1,0 +1,16 @@
+{
+  "name": "certificate-checker",
+  "version": "0.1.0",
+  "main": "index.js",
+  "author": "Mark Barr <mark@hyperingenuity.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "eslint": "^9.13.0"
+  },
+  "scripts": {
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "async": "^3.2.6"
+  }
+}
