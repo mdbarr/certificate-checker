@@ -68,9 +68,11 @@ function getHTTPSCertificate ({ hostname, port = 443 }) {
 }
 
 async function validateCertificate (location) {
-  let data;
+  let validation;
 
   try {
+    let data;
+
     if (location.startsWith('https://')) {
       data = await getHTTPSCertificate(url.parse(location));
     } else if (location.startsWith('/')) {
@@ -80,7 +82,7 @@ async function validateCertificate (location) {
     }
 
     if (data) {
-      const validation = {
+      validation = {
         valid: true,
         location,
         cname: null,
@@ -132,11 +134,18 @@ async function validateCertificate (location) {
       reason: 'UNABLE_TO_GET_CERT',
     };
   } catch (error) {
-    return {
-      valid: false,
-      location,
-      reason: error.message,
-    };
+    if (typeof validation === 'object' && validation !== null) {
+      validation.valid = false;
+      validation.reasons.push(error.message);
+    } else {
+      validation = {
+        valid: false,
+        location,
+        reasons: [ error.message ],
+      };
+    }
+
+    return validation;
   }
 }
 
