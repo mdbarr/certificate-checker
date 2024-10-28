@@ -28,7 +28,7 @@ function formatter (results, options) {
 
       let details = '';
       if (result.valid && options.verbose) {
-        details = styleText('grey', `  ${ result.cname } valid until ${ result.validTo.replace(/T.*$/u, '') } (${ result.daysRemaining } days)`);
+        details = styleText('grey', ` ${ result.cname } valid until ${ result.validTo.replace(/T.*$/u, '') } (${ result.daysRemaining } days)`);
       }
 
       console.log(`${ icon }${ result.location } ${ valid }${ reasons || details }`);
