@@ -57,7 +57,7 @@ function getHTTPSCertificate ({ hostname, port = 443 }) {
       req.on('error', reject);
       req.on('timeout', () => {
         req.destroy();
-        return reject(new Error('Timed Out'));
+        return reject(new Error(`Connection to ${ hostname } timed out`));
       });
 
       return req.end();
@@ -92,13 +92,15 @@ async function validateCertificate (location) {
         certificate: data.certificate,
         cipher: data.cipher,
         ocsp: null,
-        reasons: [],
+        errors: [],
+        warnings: [],
+        status: 'ok',
       };
 
       if (typeof data.authorized !== 'undefined') {
         validation.valid = data.authorized;
         if (!data.authorized) {
-          validation.reasons.push(data.authorizationError);
+          validation.errors.push(data.authorizationError);
         }
       }
 
@@ -108,40 +110,59 @@ async function validateCertificate (location) {
           validation.cname = cname;
         } else {
           validation.valid = false;
-          validation.reasons.push('NO_CERT_CNAME');
+          validation.errors.push("Certificate doesn't contain a common name");
         }
       } else {
         validation.valid = false;
-        validation.reasons.push('NO_CERT_SUBJECT');
+        validation.errors.push("Certificate doesn't contain a subject");
       }
 
       if (validation.valid && data.certificate?.infoAccess) {
-        const ocspResult = await getCertStatus(data.certificate);
-        validation.ocsp = ocspResult;
+        try {
+          const ocspResult = await getCertStatus(data.certificate);
+          validation.ocsp = ocspResult;
 
-        if (ocspResult.state === 'revoked') {
-          validation.valid = false;
-          validation.reasons.push('CERT_REVOKED');
+          if (ocspResult.state === 'revoked') {
+            validation.valid = false;
+            validation.errors.push('Certificate has been revoked');
+          }
+        } catch (error) {
+          validation.warnings.push(`OCSP validation failure: ${ error.message }`);
+        }
+      }
+    } else {
+      validation.valid = false;
+      validation.errors.push(`Unable to get the certificate at ${ validation.location }`);
+    }
+
+    if (validation.valid) {
+      if (validation.daysRemaining <= 14) {
+        validation.warnings.push('Certificate expires within two weeks');
+      }
+
+      if (validation.cipher) {
+        if (validation.cipher.version !== 'TLSv1.3') {
+          validation.warnings.push(`Outdated TLS, using version ${ validation.cipher.version } instead of TLSv1.3`);
         }
       }
 
-      return validation;
+      if (validation.warnings.length) {
+        validation.status = 'warning';
+      } else {
+        validation.status = 'invalid';
+      }
     }
 
-    return {
-      valid: false,
-      location,
-      reason: 'UNABLE_TO_GET_CERT',
-    };
+    return validation;
   } catch (error) {
     if (typeof validation === 'object' && validation !== null) {
       validation.valid = false;
-      validation.reasons.push(error.message);
+      validation.errors.push(error.message);
     } else {
       validation = {
         valid: false,
         location,
-        reasons: [ error.message ],
+        errors: [ error.message ],
       };
     }
 
