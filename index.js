@@ -28,12 +28,13 @@ async function getFileCertificate (filename) {
   const data = await fs.readFile(filename);
   const certificate = new X509Certificate(data);
   return {
+    type: 'file',
     certificate,
     ...checkCertificateDates(certificate),
   };
 }
 
-function getHTTPSCertificate ({ hostname, port = 443 }) {
+function getHostCertificate ({ hostname, port = 443 }) {
   return new Promise((resolve, reject) => {
     try {
       const req = https.request({
@@ -45,6 +46,7 @@ function getHTTPSCertificate ({ hostname, port = 443 }) {
         const cipher = res.socket.getCipher();
         res.socket.destroy();
         return resolve({
+          type: 'host',
           authorizationError: res.socket.authorizationError,
           authorized: res.socket.authorized,
           certificate,
@@ -74,17 +76,18 @@ async function validateCertificate (location) {
     let data;
 
     if (location.startsWith('https://')) {
-      data = await getHTTPSCertificate(url.parse(location));
+      data = await getHostCertificate(url.parse(location));
     } else if (location.startsWith('/')) {
       data = await getFileCertificate(location);
     } else {
-      data = await getHTTPSCertificate({ hostname: location });
+      data = await getHostCertificate({ hostname: location });
     }
 
     if (data) {
       validation = {
-        valid: true,
+        type: data.type,
         location,
+        valid: true,
         cname: null,
         daysRemaining: data.daysRemaining,
         validFrom: data.validFrom,
@@ -95,6 +98,7 @@ async function validateCertificate (location) {
         errors: [],
         warnings: [],
         status: 'ok',
+        checked: Date.now(),
       };
 
       if (typeof data.authorized !== 'undefined') {
@@ -172,7 +176,7 @@ async function validateCertificate (location) {
 
 module.exports = {
   getFileCertificate,
-  getHTTPSCertificate,
+  getHostCertificate,
   validate: validateCertificate,
   validateCertificate,
 };
