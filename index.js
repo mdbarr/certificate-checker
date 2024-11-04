@@ -148,9 +148,9 @@ async function validateCertificate (location) {
 
       if (validation.warnings.length) {
         validation.status = 'warning';
-      } else {
-        validation.status = 'invalid';
       }
+    } else {
+      validation.status = 'invalid';
     }
 
     return validation;
