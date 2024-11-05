@@ -6,6 +6,23 @@ const fs = require('node:fs/promises');
 const https = require('node:https');
 const url = require('node:url');
 
+const defaultRules = {
+  expiration: {
+    enabled: true,
+    level: 'warning',
+    days: 14,
+  },
+  ocsp: {
+    enabled: true,
+    level: 'error',
+    failure: 'info',
+  },
+  tls: {
+    enabled: true,
+    level: 'warning',
+  },
+};
+
 const httpsDefaults = {
   agent: false,
   method: 'HEAD',
@@ -69,10 +86,26 @@ function getHostCertificate ({ hostname, port = 443 }) {
   });
 }
 
-async function validateCertificate (location) {
+function annotate (validation, level, message) {
+  if (level === 'error') {
+    validation.valid = false;
+    validation.errors.push(message);
+  } else if (level === 'warning') {
+    validation.warnings.push(message);
+  } else {
+    validation.info.push(message);
+  }
+}
+
+async function validateCertificate (location, options) {
   let validation;
 
   try {
+    const rules = {
+      ...defaultRules,
+      ...options,
+    };
+
     let data;
 
     if (location.startsWith('https://')) {
@@ -88,7 +121,9 @@ async function validateCertificate (location) {
         type: data.type,
         location,
         valid: true,
+        status: 'ok',
         cname: null,
+        issuer: null,
         daysRemaining: data.daysRemaining,
         validFrom: data.validFrom,
         validTo: data.validTo,
@@ -97,7 +132,8 @@ async function validateCertificate (location) {
         ocsp: null,
         errors: [],
         warnings: [],
-        status: 'ok',
+        info: [],
+        serialNumber: data.certificate.serialNumber,
         checked: Date.now(),
       };
 
@@ -121,17 +157,26 @@ async function validateCertificate (location) {
         validation.errors.push("Certificate doesn't contain a subject");
       }
 
-      if (validation.valid && data.certificate?.infoAccess) {
+      if (data.certificate.issuer) {
+        if (subjectRegExp.test(data.certificate.issuer)) {
+          const [ , issuer ] = data.certificate.issuer.match(subjectRegExp);
+          validation.issuer = issuer;
+        } else {
+          validation.valid = false;
+          validation.errors.push("Certificate doesn't contain an issuer");
+        }
+      }
+
+      if (rules?.ocsp?.enabled && validation.valid && data.certificate?.infoAccess) {
         try {
           const ocspResult = await getCertStatus(data.certificate);
           validation.ocsp = ocspResult;
 
           if (ocspResult.state === 'revoked') {
-            validation.valid = false;
-            validation.errors.push('Certificate has been revoked');
+            annotate(validation, rules?.ocsp?.level, 'Certificate has been revoked');
           }
         } catch (error) {
-          validation.warnings.push(`OCSP validation failure: ${ error.message }`);
+          annotate(validation, rules?.ocsp.failure, `OCSP validation failure: ${ error.message }`);
         }
       }
     } else {
@@ -140,13 +185,13 @@ async function validateCertificate (location) {
     }
 
     if (validation.valid) {
-      if (validation.daysRemaining <= 14) {
-        validation.warnings.push('Certificate expires within two weeks');
+      if (rules?.expiration?.enabled && validation.daysRemaining <= rules?.expiration?.days) {
+        annotate(validation, rules?.expiration.level, `Certificate expires within ${ rules?.expiration?.days } days`);
       }
 
-      if (validation.cipher) {
+      if (rules?.tls?.enabled && validation.cipher) {
         if (validation.cipher.version !== 'TLSv1.3') {
-          validation.warnings.push(`Outdated TLS, using version ${ validation.cipher.version } instead of TLSv1.3`);
+          annotate(validation, rules?.tls?.level, `Outdated TLS, using version ${ validation.cipher.version } instead of TLSv1.3`);
         }
       }
 
