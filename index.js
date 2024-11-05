@@ -167,12 +167,12 @@ async function validateCertificate (location, options) {
         }
       }
 
-      if (rules?.ocsp?.enabled && validation.valid && data.certificate?.infoAccess) {
+      if (rules?.ocsp?.enabled && data.certificate?.infoAccess) {
         try {
           const ocspResult = await getCertStatus(data.certificate);
           validation.ocsp = ocspResult;
 
-          if (ocspResult.state === 'revoked') {
+          if (ocspResult.status === 'revoked') {
             annotate(validation, rules?.ocsp?.level, 'Certificate has been revoked');
           }
         } catch (error) {
