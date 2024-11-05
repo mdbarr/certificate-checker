@@ -1,6 +1,6 @@
 {
   "name": "certificate-checker",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "main": "index.js",
   "bin": {
     "certificate-checker": "cli.js"
